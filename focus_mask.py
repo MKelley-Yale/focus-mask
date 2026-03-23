@@ -120,7 +120,7 @@ class OverlayWindow(QWidget):
     def _poll_cursor(self):
         if self.s["locked"]:
             return
-        y = QApplication.primaryScreen().cursor().pos().y()
+        y = QCursor.pos().y()
         if y != self._last_y:
             self._last_y = y
             self.bar_y = y
