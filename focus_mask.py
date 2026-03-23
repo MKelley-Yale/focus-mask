@@ -2,6 +2,7 @@
 # Full-screen dim overlay with a horizontal focus bar that follows the cursor.
 # Controls: dim strength, bar height, bar brightness, bar tint color/opacity.
 # Created: March 2026 | Last edited: March 2026
+# Hotkey: Ctrl+Shift+F toggles overlay on/off
 
 import sys
 import os
@@ -11,10 +12,11 @@ import platform
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QSlider, QLabel, QPushButton,
-    QVBoxLayout, QHBoxLayout, QColorDialog, QSystemTrayIcon, QMenu, QAction
+    QVBoxLayout, QHBoxLayout, QColorDialog, QSystemTrayIcon, QMenu, QAction,
+    QShortcut
 )
-from PyQt5.QtCore import Qt, QTimer, QPoint, QRect
-from PyQt5.QtGui import QPainter, QColor, QPixmap, QPen, QCursor
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QAbstractNativeEventFilter
+from PyQt5.QtGui import QPainter, QColor, QPixmap, QPen, QCursor, QIcon, QKeySequence
 
 # ── Settings ────────────────────────────────────────────────────────────────
 
@@ -293,6 +295,12 @@ class ControlPanel(QWidget):
         btn_row.addWidget(self.btn_hide)
         outer.addLayout(btn_row)
 
+        # Shortcut hint
+        hint = QLabel("Ctrl+Shift+F  —  toggle overlay")
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("color: #555; font-size: 10px; padding-top: 4px;")
+        outer.addWidget(hint)
+
     def _update(self, key, value, label_widget):
         label_widget.setText(str(value))
         self.s[key] = value
@@ -360,7 +368,6 @@ def make_tray_icon():
     p.fillRect(0, 8, 22, 6,  QColor(220, 220, 180))
     p.fillRect(0, 14, 22, 8, QColor(30, 30, 30))
     p.end()
-    from PyQt5.QtGui import QIcon
     return QIcon(px)
 
 
@@ -393,6 +400,31 @@ def build_tray(app, overlay, panel):
     tray.show()
     return tray
 
+# ── Global hotkey (Windows) ───────────────────────────────────────────────────
+
+_HOTKEY_ID   = 1
+_MOD_CONTROL = 0x0002
+_MOD_SHIFT   = 0x0004
+_VK_F        = 0x46
+_WM_HOTKEY   = 0x0312
+
+class GlobalHotkeyFilter(QAbstractNativeEventFilter):
+    """Catches WM_HOTKEY messages on Windows and fires a callback."""
+
+    def __init__(self, hotkey_id, callback):
+        super().__init__()
+        self._id = hotkey_id
+        self._callback = callback
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType == b"windows_generic_MSG":
+            import ctypes.wintypes
+            # message is a sip.voidptr pointing to a Win32 MSG struct
+            msg = ctypes.cast(int(message), ctypes.POINTER(ctypes.wintypes.MSG)).contents
+            if msg.message == _WM_HOTKEY and msg.wParam == self._id:
+                self._callback()
+        return False, 0
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -419,6 +451,28 @@ def main():
     panel.show()
 
     tray = build_tray(app, overlay, panel)  # noqa: F841  (must stay alive)
+
+    # ── Global hotkey: Ctrl+Shift+F toggles overlay ──────────────────────────
+    def toggle_overlay():
+        if overlay.isVisible():
+            overlay.hide()
+        else:
+            overlay.show()
+
+    if platform.system() == "Windows":
+        ctypes.windll.user32.RegisterHotKey(
+            None, _HOTKEY_ID, _MOD_CONTROL | _MOD_SHIFT, _VK_F
+        )
+        _hotkey_filter = GlobalHotkeyFilter(_HOTKEY_ID, toggle_overlay)
+        app.installNativeEventFilter(_hotkey_filter)
+        app.aboutToQuit.connect(
+            lambda: ctypes.windll.user32.UnregisterHotKey(None, _HOTKEY_ID)
+        )
+    else:
+        # Linux fallback: app-wide shortcut (works whenever any app window has focus)
+        _shortcut = QShortcut(QKeySequence("Ctrl+Shift+F"), panel)
+        _shortcut.setContext(Qt.ApplicationShortcut)
+        _shortcut.activated.connect(toggle_overlay)
 
     sys.exit(app.exec_())
 
