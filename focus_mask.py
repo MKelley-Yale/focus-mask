@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QColorDialog, QSystemTrayIcon, QMenu, QAction
 )
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect
-from PyQt5.QtGui import QPainter, QColor, QPixmap, QPen
+from PyQt5.QtGui import QPainter, QColor, QPixmap, QPen, QCursor
 
 # ── Settings ────────────────────────────────────────────────────────────────
 
