@@ -1,7 +1,7 @@
 # focus_mask.py — Screen Focus Overlay Tool
 # Full-screen dim overlay with a horizontal focus bar that follows the cursor.
 # Controls: dim strength, bar height, bar brightness, bar tint color/opacity.
-# Created: March 2026 | Last edited: March 2026
+# Created: March 2026 | Last edited: April 2026
 # Hotkey: Ctrl+Shift+F toggles overlay on/off
 
 import sys
@@ -192,6 +192,7 @@ class ControlPanel(QWidget):
         self.overlay = overlay
         self.s = settings
         self._drag_pos = None
+        self._is_minimized = False
 
         self.setWindowFlags(
             Qt.FramelessWindowHint |
@@ -222,19 +223,41 @@ class ControlPanel(QWidget):
 
         self._build_ui()
         self.resize(320, self.sizeHint().height())
+        # Store maximized height after layout is resolved
+        self._max_height = self.sizeHint().height()
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(10)
 
-        # Background panel drawn via paintEvent; layout sits on top
+        # ── Header row: title + minimize button ──────────────────────────────
+        header = QHBoxLayout()
         title = QLabel("Focus Mask")
         title.setStyleSheet("color: #AAFFAA; font-size: 14px; font-weight: bold;")
-        outer.addWidget(title)
+        self.btn_minimize = QPushButton("▲")
+        self.btn_minimize.setFixedSize(24, 24)
+        self.btn_minimize.setToolTip("Minimize / maximize panel")
+        self.btn_minimize.setStyleSheet(
+            "QPushButton { background: #2A2A2E; color: #AAFFAA; border: 1px solid #555;"
+            " border-radius: 4px; font-size: 11px; padding: 0; }"
+            "QPushButton:hover { background: #3A3A3E; }"
+        )
+        self.btn_minimize.clicked.connect(self._toggle_minimized)
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(self.btn_minimize)
+        outer.addLayout(header)
 
-        # Helper: slider row
-        # Returns (slider, value_label)
+        # ── Collapsible content area ──────────────────────────────────────────
+        self._content = QWidget()
+        self._content.setStyleSheet("QWidget { background: transparent; }")
+        content_layout = QVBoxLayout(self._content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
+        outer.addWidget(self._content)
+
+        # Helper: slider row — adds to content_layout
         def slider_row(label_text, lo, hi, value, step=1):
             row = QHBoxLayout()
             lbl = QLabel(label_text)
@@ -249,7 +272,7 @@ class ControlPanel(QWidget):
             row.addWidget(lbl)
             row.addWidget(sld)
             row.addWidget(val_lbl)
-            outer.addLayout(row)
+            content_layout.addLayout(row)
             return sld, val_lbl
 
         # 1. Dimming
@@ -281,7 +304,7 @@ class ControlPanel(QWidget):
         self.btn_tint.clicked.connect(self._pick_tint_color)
         tint_row.addWidget(tint_lbl)
         tint_row.addWidget(self.btn_tint)
-        outer.addLayout(tint_row)
+        content_layout.addLayout(tint_row)
 
         # Lock + Hide row
         btn_row = QHBoxLayout()
@@ -293,13 +316,27 @@ class ControlPanel(QWidget):
         self.btn_hide.clicked.connect(self.hide)
         btn_row.addWidget(self.btn_lock)
         btn_row.addWidget(self.btn_hide)
-        outer.addLayout(btn_row)
+        content_layout.addLayout(btn_row)
 
         # Shortcut hint
         hint = QLabel("Ctrl+Shift+F  —  toggle overlay")
         hint.setAlignment(Qt.AlignCenter)
         hint.setStyleSheet("color: #555; font-size: 10px; padding-top: 4px;")
-        outer.addWidget(hint)
+        content_layout.addWidget(hint)
+
+    def _toggle_minimized(self):
+        self._is_minimized = not self._is_minimized
+        self._content.setVisible(not self._is_minimized)
+        if self._is_minimized:
+            self.btn_minimize.setText("▼")
+            # Collapse to header bar only (~44px with 12px top+bottom margins)
+            self.setFixedHeight(44)
+        else:
+            self.btn_minimize.setText("▲")
+            # Release fixed-height constraint, then restore full size
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+            self.resize(self.width(), self._max_height)
 
     def _update(self, key, value, label_widget):
         label_widget.setText(str(value))
